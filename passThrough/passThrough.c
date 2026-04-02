@@ -529,7 +529,6 @@ Return Value:
 /*************************************************************************
     MiniFilter initialization and unload routines.
 *************************************************************************/
-// --- ФУНКЦИЯ ЧТЕНИЯ КОНФИГА С ДИСКА ---
 VOID PtLoadConfiguration()
 {
     NTSTATUS status;
@@ -538,30 +537,24 @@ VOID PtLoadConfiguration()
     HANDLE fileHandle;
     IO_STATUS_BLOCK ioStatusBlock;
 
-    // В ядре мы можем достучаться до диска C: через символическую ссылку \??\C
     RtlInitUnicodeString(&uniName, L"\\??\\C:\\config.txt");
-
+    //даем файлу атрибуты
     InitializeObjectAttributes(&oa, &uniName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
 
-    // Открываем файл
-    status = ZwCreateFile(&fileHandle, GENERIC_READ, &oa, &ioStatusBlock, NULL,
-                          FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_OPEN, 
-                          FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+    status = ZwCreateFile(&fileHandle, GENERIC_READ, &oa, &ioStatusBlock, NULL, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_OPEN, 
+            FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
 
     if (NT_SUCCESS(status)) {
         char buffer[512] = {0};
         
-        // Читаем содержимое файла
-        status = ZwReadFile(fileHandle, NULL, NULL, NULL, &ioStatusBlock, 
-                            buffer, sizeof(buffer) - 1, NULL, NULL);
+        status = ZwReadFile(fileHandle, NULL, NULL, NULL, &ioStatusBlock, buffer, sizeof(buffer) - 1, NULL, NULL);
 
         if (NT_SUCCESS(status)) {
+            //статистика
             ULONG bytesRead = (ULONG)ioStatusBlock.Information;
             
-            // Наш пуленепробиваемый парсер (без использования C-библиотек)
-            // Наш новый, красивый и умный парсер
             for (ULONG i = 0; i < bytesRead; i++) {
-                // Ищем ADMIN
+                // ищем ADMIN
                 if (i + 4 < bytesRead && buffer[i]=='A' && buffer[i+1]=='D' && buffer[i+2]=='M') {
                     g_AdminRead = FALSE; g_AdminWrite = FALSE; // Сброс
                     for(ULONG j = i; j < bytesRead && buffer[j] != '\n'; j++) {
@@ -569,7 +562,7 @@ VOID PtLoadConfiguration()
                         if(buffer[j] == 'W') g_AdminWrite = TRUE;
                     }
                 }
-                // Ищем EMPLOYEE
+                // ищем EMPLOYEE
                 if (i + 7 < bytesRead && buffer[i]=='E' && buffer[i+1]=='M' && buffer[i+2]=='P') {
                     g_EmployeeRead = FALSE; g_EmployeeWrite = FALSE; // Сброс
                     for(ULONG j = i; j < bytesRead && buffer[j] != '\n'; j++) {
@@ -577,7 +570,7 @@ VOID PtLoadConfiguration()
                         if(buffer[j] == 'W') g_EmployeeWrite = TRUE;
                     }
                 }
-                // Ищем GUEST
+                // ищем GUEST
                 if (i + 4 < bytesRead && buffer[i]=='G' && buffer[i+1]=='U' && buffer[i+2]=='E') {
                     g_GuestRead = FALSE; g_GuestWrite = FALSE; // Сброс
                     for(ULONG j = i; j < bytesRead && buffer[j] != '\n'; j++) {
@@ -586,11 +579,10 @@ VOID PtLoadConfiguration()
                     }
                 }
             }
-            // Выводим красивую таблицу прав при загрузке драйвера!
             DbgPrint("[PassThrough] SUCCESS! Config loaded:\n");
-            DbgPrint("[PassThrough]   Admin    = [%c%c]\n", g_AdminRead ? 'R' : '-', g_AdminWrite ? 'W' : '-');
-            DbgPrint("[PassThrough]   Employee = [%c%c]\n", g_EmployeeRead ? 'R' : '-', g_EmployeeWrite ? 'W' : '-');
-            DbgPrint("[PassThrough]   Guest    = [%c%c]\n", g_GuestRead ? 'R' : '-', g_GuestWrite ? 'W' : '-');
+            DbgPrint("[PassThrough] Admin    = [%c%c]\n", g_AdminRead ? 'R' : '-', g_AdminWrite ? 'W' : '-');
+            DbgPrint("[PassThrough] Employee = [%c%c]\n", g_EmployeeRead ? 'R' : '-', g_EmployeeWrite ? 'W' : '-');
+            DbgPrint("[PassThrough] Guest    = [%c%c]\n", g_GuestRead ? 'R' : '-', g_GuestWrite ? 'W' : '-');
         }
         ZwClose(fileHandle); 
     } else {
@@ -772,35 +764,28 @@ Return Value:
     UNREFERENCED_PARAMETER( FltObjects );
     UNREFERENCED_PARAMETER( CompletionContext );
 
-    // 1. Нас интересуют только попытки ОТКРЫТИЯ/СОЗДАНИЯ файлов
     if (Data->Iopb->MajorFunction != IRP_MJ_CREATE) {
         return FLT_PREOP_SUCCESS_WITH_CALLBACK;
     }
 
-    // 2. Получаем полное имя файла, к которому обращаются
-    status = FltGetFileNameInformation(Data, 
-                                       FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, 
-                                       &nameInfo);
+    status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT, &nameInfo);
 
     if (NT_SUCCESS(status)) {
         FltParseFileNameInformation(nameInfo);
 
-        // Указываем нашу защищаемую папку
         RtlInitUnicodeString(&targetFolder, L"\\Device\\HarddiskVolume2\\ProtectedFolder");
 
-        // 3. Если пытаются открыть файл в НАШЕЙ папке
         if (RtlPrefixUnicodeString(&targetFolder, &nameInfo->Name, TRUE)) {
-            
-            // Вытаскиваем процесс и токен
+            //лезем в eprocess
             PEPROCESS currentProcess = IoGetCurrentProcess();
             UCHAR* processName = PsGetProcessImageFileName(currentProcess);
             PACCESS_TOKEN token = PsReferencePrimaryToken(currentProcess);
             
             BOOLEAN isAdmin = SeTokenIsAdmin(token); 
+            //освобождение счетчика ссылок
             PsDereferencePrimaryToken(token);        
             
 
-            // 1. ОПРЕДЕЛЯЕМ РОЛЬ И ЕЁ ПРАВА
             BOOLEAN canRead = g_GuestRead; 
             BOOLEAN canWrite = g_GuestWrite; 
             char* roleName = "GUEST";
@@ -810,7 +795,6 @@ Return Value:
                 canWrite = g_AdminWrite;
                 roleName = "ADMIN";
             } 
-            // ПРАВИЛО 2: ОБЫЧНЫЙ ЮЗЕР С НАШЕЙ ПРОГРАММОЙ - ЭТО СОТРУДНИК
             else if (processName[0] == 'F' && processName[1] == 'A' && processName[2] == 'T' && 
                     processName[3] == '.' && processName[4] == 'e' && processName[5] == 'x' && processName[6] == 'e') {
                 canRead = g_EmployeeRead;
@@ -818,13 +802,10 @@ Return Value:
                 roleName = "EMPLOYEE";
             }
 
-            // 2. ЧТО ИМЕННО ЗАПРАШИВАЕТ ПРОЦЕСС?
             ACCESS_MASK desiredAccess = Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
             BOOLEAN wantsWrite = (desiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE)) != 0;
             BOOLEAN wantsRead = (desiredAccess & (FILE_READ_DATA | FILE_EXECUTE)) != 0;
 
-            // 3. СВЕРЯЕМ ЗАПРОС И ПРАВА
-            // Если у роли вообще нет никаких прав (например, GUEST) - рубим сразу
             if (!canRead && !canWrite) {
                 DbgPrint("[PassThrough] %s BLOCKED (Has [--]) for %s\n", roleName, processName);
                 Data->IoStatus.Status = STATUS_ACCESS_DENIED;
@@ -833,39 +814,30 @@ Return Value:
                 return FLT_PREOP_COMPLETE;
             }
 
-            // Если хочет писать, но нет права на запись
             if (wantsWrite && !canWrite) {
-                DbgPrint("[PassThrough] %s BLOCKED (Wants Write, Has [%c%c]) for %s\n", 
-                         roleName, canRead?'R':'-', canWrite?'W':'-', processName);
+                DbgPrint("[PassThrough] %s BLOCKED (Wants Write, Has [%c%c]) for %s\n", roleName, canRead?'R':'-', canWrite?'W':'-', processName);
                 Data->IoStatus.Status = STATUS_ACCESS_DENIED;
                 Data->IoStatus.Information = 0;
                 FltReleaseFileNameInformation(nameInfo);
                 return FLT_PREOP_COMPLETE;
             }
             
-            // Если хочет читать, но нет права на чтение
             if (wantsRead && !canRead) {
-                DbgPrint("[PassThrough] %s BLOCKED (Wants Read, Has [%c%c]) for %s\n", 
-                         roleName, canRead?'R':'-', canWrite?'W':'-', processName);
+                DbgPrint("[PassThrough] %s BLOCKED (Wants Read, Has [%c%c]) for %s\n", roleName, canRead?'R':'-', canWrite?'W':'-', processName);
                 Data->IoStatus.Status = STATUS_ACCESS_DENIED;
                 Data->IoStatus.Information = 0;
                 FltReleaseFileNameInformation(nameInfo);
                 return FLT_PREOP_COMPLETE;
             }
 
-            // Если всё законно - ПРОПУСКАЕМ!
-            DbgPrint("[PassThrough] %s GRANTED (Has [%c%c]) for %s\n", 
-                     roleName, canRead?'R':'-', canWrite?'W':'-', processName);
+            DbgPrint("[PassThrough] %s GRANTED (Has [%c%c]) for %s\n", roleName, canRead?'R':'-', canWrite?'W':'-', processName);
             FltReleaseFileNameInformation(nameInfo);
-            return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+            return FLT_PREOP_SUCCESS_WITH_CALLBACK; //пускаем дальше по стеку драйверов
         }
 
-        // Если это другая папка на диске - просто освобождаем память!
-        FltReleaseFileNameInformation(nameInfo);
+        FltReleaseFileNameInformation(nameInfo); //в ином случае освобождаем место
     }
 
-    // 4. ВОТ ЭТОТ RETURN СПАСАЕТ ОТ BSOD! 
-    // Он пропускает 99% остальных файлов системы.
     return FLT_PREOP_SUCCESS_WITH_CALLBACK;
     
 
