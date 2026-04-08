@@ -802,9 +802,27 @@ Return Value:
                 roleName = "EMPLOYEE";
             }
 
+            
             ACCESS_MASK desiredAccess = Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
-            BOOLEAN wantsWrite = (desiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE)) != 0;
-            BOOLEAN wantsRead = (desiredAccess & (FILE_READ_DATA | FILE_EXECUTE)) != 0;
+            
+            
+            UCHAR createDisposition = (Data->Iopb->Parameters.Create.Options >> 24) & 0xFF;
+            
+            
+            BOOLEAN isWriteAccess = (desiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA)) != 0;
+            
+            
+            BOOLEAN isCreationIntent = (createDisposition == FILE_CREATE ||        // Создать (ошибка, если есть)
+                                        createDisposition == FILE_SUPERSEDE ||     // Заменить целиком
+                                        createDisposition == FILE_OVERWRITE ||     // Перезаписать
+                                        createDisposition == FILE_OVERWRITE_IF ||  // Перезаписать (создать, если нет)
+                                        createDisposition == FILE_OPEN_IF);        // Открыть (создать, если нет)
+
+            
+            BOOLEAN wantsWrite = isWriteAccess || isCreationIntent;
+            
+            
+            BOOLEAN wantsRead = (desiredAccess & (FILE_READ_DATA | FILE_EXECUTE | FILE_LIST_DIRECTORY)) != 0;
 
             if (!canRead && !canWrite) {
                 DbgPrint("[PassThrough] %s BLOCKED (Has [--]) for %s\n", roleName, processName);
