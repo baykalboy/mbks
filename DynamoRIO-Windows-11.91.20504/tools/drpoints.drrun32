@@ -1,0 +1,6 @@
+# drpoints tool config file
+# client tool path
+CLIENT32_REL=tools/lib32/release/drpoints.dll
+CLIENT64_REL=tools/lib32/release/drpoints.dll
+# client tool options
+TOOL_OP=
