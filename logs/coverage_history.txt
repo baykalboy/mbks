@@ -347,3 +347,174 @@ msvcrt.dll = 1774
 ntdll.dll = 2625
 Мутация: 4-byte at 0x5 -> 0x7ffffffe
 
+[0]
+vuln10.exe = 468
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1922
+KERNEL32.DLL = 27
+msvcrt.dll = 1784
+ntdll.dll = 2629
+Мутация: Default Config
+
+[56]
+vuln10.exe = 473
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1921
+KERNEL32.DLL = 27
+msvcrt.dll = 1782
+ntdll.dll = 2628
+Мутация: 4-byte at 0x3 -> 0x0
+
+[0]
+vuln10.exe = 466
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1921
+KERNEL32.DLL = 27
+msvcrt.dll = 1784
+ntdll.dll = 2622
+Мутация: Автоматический режим: Default Config
+
+[1]
+vuln10.exe = 468
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1922
+KERNEL32.DLL = 27
+msvcrt.dll = 1779
+ntdll.dll = 2628
+Мутация: Автоматический: dst_len=10 + insert after delim 0x35
+
+[7]
+vuln10.exe = 473
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1921
+KERNEL32.DLL = 27
+msvcrt.dll = 1770
+ntdll.dll = 2749
+Мутация: Автоматический: dst_len=2500 + insert after delim 0x35
+
+[11]
+vuln10.exe = 439
+func.dll = 3
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1206
+KERNEL32.DLL = 31
+msvcrt.dll = 1581
+ntdll.dll = 2386
+Мутация: CRASH TRIGGERED: Автоматический: dst_len=66000 + insert after delim 0x35
+
+[12]
+vuln10.exe = 439
+func.dll = 3
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1206
+KERNEL32.DLL = 28
+msvcrt.dll = 1581
+ntdll.dll = 2386
+Мутация: CRASH TRIGGERED: Автоматический: dst_len=68000 + insert after delim 0x35
+
+[13]
+vuln10.exe = 439
+func.dll = 3
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1206
+KERNEL32.DLL = 28
+msvcrt.dll = 1581
+ntdll.dll = 2386
+Мутация: CRASH TRIGGERED: Автоматический: dst_len=70000 + insert after delim 0x35
+
+[8]
+vuln10.exe = 485
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1921
+KERNEL32.DLL = 27
+msvcrt.dll = 1792
+ntdll.dll = 2637
+Мутация: Стратегия 2: Битовая инверсия по смещению 0x10a
+
+[0]
+vuln10.exe = 480
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1921
+KERNEL32.DLL = 27
+msvcrt.dll = 1795
+ntdll.dll = 2634
+Мутация: Автоматический режим: Default Config
+
+[11]
+Мутация: CRASH TRIGGERED: Автоматический: dst_len=66000 + insert after delim 0x35
+
+[12]
+Мутация: CRASH TRIGGERED: Автоматический: dst_len=68000 + insert after delim 0x35
+
+[53]
+vuln10.exe = 485
+func.dll = 51
+drmgr.dll = 0
+drreg.dll = 0
+drx.dll = 0
+drcovlib.dll = 0
+drcov.dll = 0
+dynamorio.dll = 0
+KERNELBASE.dll = 1920
+KERNEL32.DLL = 27
+msvcrt.dll = 1792
+ntdll.dll = 2637
+Мутация: Стратегия 2: Битовая инверсия по смещению 0x1bf
+

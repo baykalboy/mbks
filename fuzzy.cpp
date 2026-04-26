@@ -439,7 +439,8 @@ void RunSmartMode(const vector<uint8_t>& original_data) {
             string desc;
             
             if (test_data.size() >= 12) {
-                *reinterpret_cast<uint32_t*>(&test_data[8]) = length;
+                *reinterpret_cast<uint32_t*>(&test_data[4]) = length;
+                *reinterpret_cast<uint32_t*>(&test_data[8]) = 0;
             }
             
             vector<uint8_t> payload(length, 0x41); 
@@ -705,7 +706,10 @@ void RunAdaptiveMode(const vector<uint8_t>& original_data, int iterations) {
             // стратегия 0: осторожная (дозапись в конец / вставка чисел)
             vector<uint32_t> lengths =  {10, 50, 128, 512, 1024, 2048, 2500, 2600, 3000, 5000, 66000, 68000, 70000};
             uint32_t len = lengths[GetRandomInt(0, lengths.size() - 1)];
-            if (test_data.size() >= 12) *reinterpret_cast<uint32_t*>(&test_data[8]) = len;
+            if (test_data.size() >= 12) {
+                *reinterpret_cast<uint32_t*>(&test_data[4]) = len;
+                *reinterpret_cast<uint32_t*>(&test_data[8]) = 0;
+            }
             vector<uint8_t> payload(GetRandomInt(100, 500), 0x41);
             test_data.insert(test_data.end(), payload.begin(), payload.end());
             desc = "Стратегия 0: Вставка числа " + to_string(len);
