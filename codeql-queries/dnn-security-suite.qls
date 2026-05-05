@@ -1,0 +1,24 @@
+# CodeQL query suite — DNN Platform security analysis
+# Variant 2: C#, 5 CWE types: SQL Injection, XSS, Path Traversal, Deserialization, XXE
+
+- description: "DNN Platform — 5 critical CWE security queries"
+
+# CWE-089: SQL Injection
+- queries: Security Features/CWE-089
+  from: codeql/csharp-queries
+
+# CWE-079: Cross-Site Scripting
+- queries: Security Features/CWE-079
+  from: codeql/csharp-queries
+
+# CWE-022: Path Traversal
+- queries: Security Features/CWE-022
+  from: codeql/csharp-queries
+
+# CWE-502: Deserialization of Untrusted Data
+- queries: Security Features/CWE-502
+  from: codeql/csharp-queries
+
+# CWE-611: XML External Entity Injection
+- queries: Security Features/CWE-611
+  from: codeql/csharp-queries

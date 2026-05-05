@@ -1,0 +1,12 @@
+# CodeQL database (large, regenerable — run: codeql database create)
+dnn-codeql-db/
+
+# DNN source code (clone from: git clone https://github.com/dnnsoftware/Dnn.Platform --branch v9.1.0 dnn-910)
+dnn-910/
+
+# Local tooling
+.claude/
+.nuget/
+
+# Office temp files
+~$*
