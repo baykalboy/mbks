@@ -8,5 +8,8 @@ dnn-910/
 .claude/
 .nuget/
 
+# SonarQube temp files
+.sonarqube/
+
 # Office temp files
 ~$*

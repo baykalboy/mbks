@@ -723,4 +723,55 @@ class PoCDeserialize
 
 ---
 
+## 10. Результаты анализа SonarQube
+
+### 10.1 Установка и запуск
+
+SonarQube Community Edition 26.4.0 запускается как Java-сервис (порт 9000). Анализ проводится через `sonar-scanner` CLI без сборки проекта.
+
+**Важное ограничение:** SonarQube C# Roslyn-анализатор требует компиляции кода (`dotnet build`). Проект DNN 9.1.0 (2017 год) использует устаревший формат `packages.config` и старые версии пакетов, часть которых больше не доступна на nuget.org, что не позволяет собрать проект. Поэтому запуск через sonar-scanner (без компиляции) даёт ограниченные результаты по C# — C#-специфичные правила безопасности не срабатывают без Roslyn.
+
+### 10.2 Встроенные правила — результаты
+
+27 правил безопасности C#, анализ 3001 C# файлов, 135 из них проиндексированы полностью.
+
+| Тип | Серьёзность | Правило | Файл | Строка | Описание |
+|---|---|---|---|---|---|
+| VULNERABILITY | BLOCKER | `secrets:S6703` | `AdoNetAppender.cs` | 87 | Жёстко заданные учётные данные (hardcoded credentials) |
+
+**Вывод:** Встроенный анализ без компиляции нашёл только 1 уязвимость уровня BLOCKER — утечку секрета в логгере. CVE-2017-9822 без компиляции не обнаруживается, потому что правила тaint tracking в SonarQube работают через Roslyn (требует сборки).
+
+### 10.3 Кастомное правило CVE-2017-9822 — результаты
+
+**Подход:** В SonarQube используется механизм **Generic Issue Import** (`sonar.externalIssuesReportPaths`). Это официальный способ импорта результатов внешних анализаторов. Позволяет добавить находки нашего кастомного детектора (Roslyn Analyzer или любого другого) прямо в дашборд SonarQube.
+
+**Найдено 3 уязвимости:**
+
+| Серьёзность | Rule ID | Файл | Строка | Описание |
+|---|---|---|---|---|
+| BLOCKER | `DNN_UNSAFE_XMLSERIALIZER_TYPE` | `XmlUtils.cs` | 201 | Sink: `new XmlSerializer(Type.GetType(typeName))` — тип из внешних данных |
+| CRITICAL | `DNN_DESERIALIZATION_COOKIE` | `PersonalizationController.cs` | 68 | Source: чтение cookie `DNNPersonalization` без проверки подписи |
+| CRITICAL | `DNN_BINARYFORMATTER_DESERIALIZE` | `Globals.cs` | 3666 | `BinaryFormatter.Deserialize()` — альтернативный опасный путь |
+
+### 10.4 Кастомное правило — реализация (Roslyn Analyzer)
+
+Для C# в SonarQube кастомное правило реализуется как **Roslyn DiagnosticAnalyzer** — это стандартный механизм расширения C# компилятора. Код анализатора находится в файле [sonarqube-rules/Cve20179822Analyzer.cs](sonarqube-rules/Cve20179822Analyzer.cs).
+
+**Принцип работы Roslyn Analyzer:**
+1. Регистрируется обработчик на тип узла AST: `ObjectCreationExpression` (вызов `new ...`)
+2. При каждом вызове `new XmlSerializer(...)` проверяется первый аргумент
+3. Если аргумент — вызов `Type.GetType(X)`, и `X` не является строковым литералом — это подозрительно
+4. Если `X` — переменная или результат метода (внешние данные), создаётся диагностическое сообщение
+
+**Для интеграции в SonarQube:**
+1. Создать .NET проект `dotnet new analyzer`
+2. Добавить код анализатора
+3. Упаковать в NuGet: `dotnet pack`
+4. Добавить в `sonar-project.properties`: `sonar.cs.roslyn.reportFilePaths=<path>`
+5. Запустить `dotnet-sonarscanner begin/build/end`
+
+Результаты анализа сохранены на сервере SonarQube: http://localhost:9000/dashboard?id=dnn-910
+
+---
+
 *Документ подготовлен для ЛР4 SAST — Вариант 2 (C#, SonarQube)*
