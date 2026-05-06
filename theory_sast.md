@@ -232,70 +232,205 @@ select sink.getNode(), source, sink, "SQL query built from $@.", source.getNode(
 
 ## 5. Semgrep
 
-### 5.1 Архитектура
+### 5.1 Что такое Semgrep и как он работает
 
-Semgrep — легковесный SAST-инструмент на основе паттернов (pattern matching). Не требует компиляции кода.
+Semgrep — это инструмент статического анализа, основанный на **паттернах**. Главная идея: ты показываешь инструменту кусочек кода с «дырками», и он находит все похожие конструкции в проекте.
+
+В отличие от CodeQL, Semgrep **не компилирует код и не строит базу данных**. Он парсит исходники напрямую через библиотеку `tree-sitter`, строит AST (дерево синтаксиса) и сопоставляет его с паттерном из правила.
 
 ```
-Исходный код → AST (через tree-sitter) → Матчинг с паттернами → Результаты
+Исходный код
+      ↓
+  Парсинг через tree-sitter → AST (синтаксическое дерево)
+      ↓
+  Сравнение узлов дерева с паттерном правила
+      ↓
+  Найдено совпадение → вывести предупреждение
 ```
 
 **Ключевые особенности:**
-- Правила в формате **YAML** — читаемы и просты в написании
-- Поддержка **30+ языков**
-- Интерфейс: CLI, Semgrep Cloud Platform, VS Code плагин
-- Встроенный реестр правил: https://semgrep.dev/r
+- Правила в формате **YAML** — читаемы без специальных знаний
+- Поддержка **30+ языков** (C#, Java, Python, Go, JS и др.)
+- Не требует сборки проекта — работает на «сыром» коде
+- Встроенный реестр правил: `semgrep.dev/r`
+- CLI, VS Code плагин, GitHub Actions
 
-### 5.2 Формат правил Semgrep (YAML)
+### 5.2 Метапеременные — ключевая концепция
+
+Паттерн Semgrep — это код с «дырками». Дырки обозначаются **метапеременными**:
+
+| Синтаксис | Что матчит |
+|---|---|
+| `$X` | Любое одиночное выражение или переменная |
+| `$...ARGS` | Любое количество аргументов (ноль или больше) |
+| `...` | Любая последовательность инструкций между |
+| `"..."` | Любая строковая константа |
+
+Пример: паттерн `$BF.Deserialize($STREAM)` найдёт все три варианта:
+```csharp
+formatter.Deserialize(stream);
+bf.Deserialize(ms);
+new BinaryFormatter().Deserialize(inputStream);
+```
+
+### 5.3 Формат правила Semgrep (YAML)
+
+Минимальное правило:
 
 ```yaml
 rules:
-  - id: csharp-sql-injection
+  - id: dangerous-binaryformatter      # уникальный ID правила
+    pattern: $BF.Deserialize($STREAM)  # что ищем
+    message: "Используется десериализатор — возможна уязвимость CWE-502"
+    languages: [csharp]
+    severity: ERROR                    # ERROR / WARNING / INFO
+```
+
+Полное правило с метаданными:
+
+```yaml
+rules:
+  - id: csharp-sql-injection-concat
     patterns:
-      - pattern: |
-          $CMD = new SqlCommand($QUERY + ..., ...);
-      - pattern-not: |
-          $CMD = new SqlCommand("...", ...);
-    message: "Potential SQL Injection: string concatenation in SqlCommand"
+      - pattern: new SqlCommand($QUERY + ..., ...)  # конкатенация строк в SQL
+      - pattern-not: new SqlCommand("...", ...)     # но не чистые строки-константы
+    message: "SQL-запрос строится конкатенацией. Используйте SqlParameter."
     languages: [csharp]
     severity: ERROR
     metadata:
-      cwe: CWE-89
+      cwe: "CWE-89"
       owasp: "A03:2021 - Injection"
+      references:
+        - https://owasp.org/Top10/A03_2021-Injection/
 ```
 
-**Основные операторы паттернов:**
+### 5.4 Логические операторы паттернов
 
 | Оператор | Описание |
 |---|---|
-| `pattern` | Точное совпадение с паттерном |
-| `pattern-not` | Исключить совпадения |
-| `pattern-either` | Логическое ИЛИ (несколько паттернов) |
-| `pattern-inside` | Паттерн внутри другого блока |
-| `pattern-not-inside` | Исключить при нахождении внутри блока |
-| `metavariable-regex` | Фильтр по регулярному выражению для переменной |
-| `focus-metavariable` | Сфокусировать сообщение на конкретной переменной |
+| `pattern` | Единственный паттерн (совпадение = срабатывание) |
+| `patterns` | Список паттернов — **все** должны совпасть (логическое И) |
+| `pattern-either` | Список паттернов — **хотя бы один** (логическое ИЛИ) |
+| `pattern-not` | Исключить совпадения с этим паттерном |
+| `pattern-inside` | Паттерн должен находиться внутри указанного блока |
+| `pattern-not-inside` | Паттерн не должен находиться внутри блока |
+| `metavariable-regex` | Фильтр метапеременной по регулярному выражению |
+| `metavariable-pattern` | Метапеременная должна совпасть с другим паттерном |
+| `focus-metavariable` | Выделить в отчёте конкретную метапеременную |
 
-**Метапеременные:**
-- `$X` — любое выражение
-- `$...ARGS` — произвольное количество аргументов
-- `...` — любая последовательность инструкций
+Пример `pattern-either` — несколько опасных десериализаторов в одном правиле:
 
-### 5.3 Запуск Semgrep
+```yaml
+rules:
+  - id: unsafe-deserializers
+    pattern-either:
+      - pattern: (BinaryFormatter $BF).Deserialize(...)
+      - pattern: (LosFormatter $LF).Deserialize(...)
+      - pattern: (SoapFormatter $SF).Deserialize(...)
+      - pattern: (ObjectStateFormatter $OSF).Deserialize(...)
+    message: "Используется небезопасный десериализатор .NET (CWE-502)"
+    languages: [csharp]
+    severity: ERROR
+```
+
+Пример `...` (три точки) — данные из cookie попадают в опасный метод позже:
+
+```yaml
+rules:
+  - id: cookie-then-deserialize
+    patterns:
+      - pattern: |
+          $DATA = Request.Cookies[$KEY].Value;
+          ...
+          $SER.Deserialize($DATA);
+    message: "Данные из cookie без проверки попадают в десериализатор"
+    languages: [csharp]
+    severity: ERROR
+```
+
+### 5.5 Taint-режим (отслеживание потока данных)
+
+Обычный паттерн ищет конструкцию в одном месте. Taint-режим позволяет отследить, как данные **текут** от источника к опасному месту через несколько строк кода — аналог taint tracking в CodeQL.
+
+```yaml
+rules:
+  - id: cookie-deserialization-taint
+    mode: taint                             # включить taint-режим
+    pattern-sources:                        # откуда приходят опасные данные
+      - pattern: Request.Cookies[...]
+      - pattern: Request.Cookies[...].Value
+    pattern-sinks:                          # куда они не должны попасть
+      - pattern: $X.Deserialize(...)
+      - pattern: new XmlSerializer(Type.GetType($T))
+    pattern-sanitizers:                     # что считается безопасной «очисткой»
+      - pattern: ValidateCookieSignature(...)
+    message: "Данные из cookie (HTTP-источник) попадают в десериализатор без проверки"
+    languages: [csharp]
+    severity: ERROR
+    metadata:
+      cve: "CVE-2017-9822"
+      cwe: "CWE-502"
+```
+
+**Как это работает:** Semgrep помечает все данные, вышедшие из `pattern-sources` как «заражённые» (tainted). Затем отслеживает их по коду — через присваивания, передачи в методы — и сигнализирует, если они достигли `pattern-sinks`. Если на пути встретился `pattern-sanitizers` — цепочка считается безопасной.
+
+**Ограничение:** В бесплатной версии taint-анализ работает только **в пределах одного файла**. Если source находится в `PersonalizationController.cs`, а sink — в `XmlUtils.cs`, Semgrep бесплатной версии эту цепочку не найдёт. Для межфайлового анализа нужна версия Pro.
+
+### 5.6 Встроенные правила и реестр
+
+Semgrep поставляется с реестром готовых правил на `semgrep.dev/r`. Для C# и .NET:
+
+| Пакет | Команда запуска | Что проверяет |
+|---|---|---|
+| C# Security | `--config p/csharp` | Общие уязвимости C# |
+| OWASP Top 10 | `--config p/owasp-top-ten` | 10 самых критичных классов уязвимостей |
+| CWE Top 25 | `--config p/cwe-top-25` | 25 опасных типов ошибок |
+| .NET | `--config p/dotnet` | .NET-специфичные проблемы |
+| Secrets | `--config p/secrets` | Утечки ключей и паролей в коде |
+
+Каждое встроенное правило — это обычный YAML-файл. На сайте можно открыть любое правило, посмотреть его логику и адаптировать под свои нужды.
+
+### 5.7 Запуск Semgrep
 
 ```bash
-# Установка
+# Установка через pip
 pip install semgrep
 
-# Запуск с реестровыми правилами
-semgrep --config "p/csharp" ./src
+# Запуск с пакетом встроенных правил C#
+semgrep --config "p/csharp" ./dnn-910
 
 # Запуск с кастомным правилом
-semgrep --config my_rule.yaml ./src
+semgrep --config semgrep-rules/cve-2017-9822.yaml ./dnn-910
 
-# Вывод в SARIF
-semgrep --config "p/csharp" --sarif -o results.sarif ./src
+# Вывод результатов в SARIF (для совместимости с другими инструментами)
+semgrep --config "p/csharp" --sarif -o semgrep-results/dnn-csharp.sarif ./dnn-910
+
+# Показать только ошибки уровня ERROR
+semgrep --config "p/csharp" --severity ERROR ./dnn-910
 ```
+
+### 5.8 Semgrep vs CodeQL — сравнение
+
+**Semgrep лучше когда:**
+- Нужно быстро написать правило (5 минут vs несколько часов для CodeQL)
+- Правило простое — «найди этот паттерн кода»
+- Нет времени разбираться в QL-синтаксисе
+- Нужно проверить конкретный файл или небольшой проект
+
+**CodeQL лучше когда:**
+- Нужно отследить данные через несколько файлов и классов
+- Важна точность (мало ложных срабатываний)
+- Нужна семантика: знать *тип* переменной, а не только её имя
+- Анализируется большой проект со сложными зависимостями
+
+| Характеристика | CodeQL | Semgrep (Free) |
+|---|---|---|
+| Порог входа | Высокий (нужно учить QL) | Низкий (YAML + код) |
+| Скорость анализа | Медленно (нужна БД) | Быстро (секунды) |
+| Межфайловый анализ | Да | Нет (только Pro) |
+| Точность | Высокая | Средняя |
+| Ложные срабатывания | Мало | Больше |
+| Написание правил | Сложно | Просто |
 
 ---
 
@@ -541,6 +676,50 @@ class PoCDeserialize
 | **Ложные срабатывания** | Мало | Зависит от правила | Средне |
 | **Интеграция CI/CD** | GitHub Actions | Любая | Jenkins, GitLab, GitHub |
 | **Open Source** | Движок закрыт, правила открыты | Открытый | Community Edition открытый |
+
+---
+
+## 9. Результаты анализа Semgrep
+
+### 9.1 Встроенные правила (`p/csharp`) — 12 находок
+
+Запуск: `semgrep --config p/csharp dnn-910/`
+
+27 правил проверено, 3001 файла просканировано.
+
+| Правило | Файл | Строка | Тип |
+|---|---|---|---|
+| `csharp-sqli` | `AdoNetAppender.cs` | 544, 590 | SQL Injection |
+| `insecure-binaryformatter-deserialization` | `Globals.cs` | 3663, 3715 | CWE-502 |
+| `csharp-sqli` | `PetaPocoHelper.cs` | 81, 115 | SQL Injection |
+| `csharp-sqli` | `DataUtil.cs` (тесты) | 132, 146 | SQL Injection |
+| `csharp-sqli` | `DatabaseHelper.cs` (тесты) | 50, 68, 99, 127 | SQL Injection |
+
+**Вывод по встроенным правилам:** Semgrep нашёл BinaryFormatter в `Globals.cs` (часть уязвимого пути CVE-2017-9822) и несколько SQL Injection в логгере и вспомогательном коде. Основной механизм CVE-2017-9822 (XmlSerializer с контролируемым типом в `XmlUtils.cs`) встроенные правила не нашли — для этого написано кастомное правило.
+
+### 9.2 Кастомное правило CVE-2017-9822 — 5 находок
+
+Запуск: `semgrep --config semgrep-rules/cve-2017-9822.yaml dnn-910/`
+
+4 правила в файле, все 4 сработали (одно — дважды по разным taint-путям).
+
+| Правило | Файл | Строка | Что обнаружено |
+|---|---|---|---|
+| `cve-2017-9822-dnn-personalization-cookie-read` | `PersonalizationController.cs` | 68 | Чтение cookie `DNNPersonalization` — источник (source) уязвимости |
+| `cve-2017-9822-xmlserializer-dynamic-type` | `XmlUtils.cs` | 201 | `new XmlSerializer(Type.GetType($X))` — опасный паттерн (sink) |
+| `cve-2017-9822-xml-attribute-to-serializer` | `XmlUtils.cs` | 201 | taint-поток: `GetAttribute("type")` → `Type.GetType()` → `XmlSerializer` |
+| `cwe-502-unsafe-dotnet-deserializers` | `Globals.cs` | 3666 | `BinaryFormatter.Deserialize()` — альтернативный путь |
+
+**Что нашёл кастомный анализ:**
+- Правило 3 (`dnn-personalization-cookie-read`) нашло строку 68 в `PersonalizationController.cs` — это точка входа: именно здесь читается cookie от атакующего.
+- Правила 1 и 2 нашли строку 201 в `XmlUtils.cs` — это финальная точка (`xser.Deserialize(reader)`), где опасные данные исполняются.
+- Правило 4 нашло `BinaryFormatter` в `Globals.cs:3666` — это альтернативный путь десериализации в том же DNN.
+
+**Ограничение Semgrep Free:** Цепочка `PersonalizationController.cs → Globals.cs → XmlUtils.cs` охватывает несколько файлов. Semgrep Free не умеет отслеживать межфайловый поток данных, поэтому source и sink находятся в отдельных срабатываниях. CodeQL в этом случае показал полный путь одним алертом (20 шагов).
+
+Результаты сохранены в:
+- `semgrep-results/dnn-builtin.sarif` — встроенные правила
+- `semgrep-results/cve-2017-9822-semgrep.sarif` — кастомное правило
 
 ---
 
