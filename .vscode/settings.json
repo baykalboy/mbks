@@ -1,0 +1,10 @@
+{
+    "files.exclude": {
+        ".claude": true
+    },
+    "sonarlint.connectedMode.project": {
+        "connectionId": "http-localhost-9000",
+        "projectKey": "dnn-910"
+    },
+    "sarif-viewer.connectToGithubCodeScanning": "off"
+}
